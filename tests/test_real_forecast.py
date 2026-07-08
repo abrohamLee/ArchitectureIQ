@@ -24,8 +24,9 @@ def test_real_curve_loads_with_expected_shape():
 
 def test_filter_ids_by_dimension():
     piqa_ids = filter_ids(task="piqa")
-    assert all(i.endswith("|piqa") for i in piqa_ids)
-    assert len(piqa_ids) >= 8  # 多个模型的 piqa 曲线
+    # id 第 4 段是 task(acc 与 acc_norm 曲线都属 piqa)
+    assert all(i.split("|")[3] == "piqa" for i in piqa_ids)
+    assert len(piqa_ids) >= 8  # 多个模型/度量的 piqa 曲线
 
 
 def test_forecast_episode_runs_on_injected_real_curve():
