@@ -57,13 +57,15 @@ def default_forecast_config() -> ForecastConfig:
 class ForecastEpisode:
     def __init__(self, config: ForecastConfig | None = None, cursor: int = 1,
                  skill_sum: float = 0.0, rounds: int = 0,
-                 curve: LearningCurve | None = None):
+                 curve: LearningCurve | None = None, curve_id: str | None = None):
         # curve 注入:real tier 直接喂真实曲线(Pythia/Marin),跳过玩具训练;
         # 否则按 config 玩具真跑一条。二者经同一滚动预测/评分逻辑。
+        # curve_id:real tier 的曲线标识,供 runstate 持久化后重建。
         self.config = config
         self.cursor = cursor
         self.skill_sum = skill_sum
         self.rounds = rounds
+        self.curve_id = curve_id
         if curve is not None:
             self._curve = curve
         else:

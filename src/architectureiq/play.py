@@ -11,11 +11,13 @@ from architectureiq.doctorstate import init_doctor, load_doctor, save_doctor
 from architectureiq.forecast import default_forecast_config
 from architectureiq.forecaststate import (
     init_forecast,
+    init_real_forecast,
     load_forecast,
     save_forecast,
 )
 from architectureiq.tournament import default_tournament_config
 from architectureiq.tourstate import (
+    init_real_tournament,
     init_tournament,
     load_tournament,
     save_tournament,
@@ -149,6 +151,10 @@ def main(argv: list[str]) -> int:
     for name in ("tour-init", "tour-observe"):
         sp = sub.add_parser(name)
         sp.add_argument("--run-dir", required=True)
+    tri = sub.add_parser("tour-real-init")
+    tri.add_argument("--run-dir", required=True)
+    tri.add_argument("--task", default="piqa")
+    tri.add_argument("--shot", default="zero-shot")
     ta = sub.add_parser("tour-advance")
     ta.add_argument("--run-dir", required=True)
     ta.add_argument("--candidate", required=True)
@@ -159,6 +165,9 @@ def main(argv: list[str]) -> int:
     for name in ("fc-init", "fc-observe"):
         sp = sub.add_parser(name)
         sp.add_argument("--run-dir", required=True)
+    fri = sub.add_parser("fc-real-init")
+    fri.add_argument("--run-dir", required=True)
+    fri.add_argument("--curve", required=True)
     fp = sub.add_parser("fc-predict")
     fp.add_argument("--run-dir", required=True)
     fp.add_argument("--value", type=float, required=True)
@@ -210,6 +219,10 @@ def main(argv: list[str]) -> int:
         t = init_tournament(args.run_dir, default_tournament_config())
         print(json.dumps(_tour_observe_dict(t), ensure_ascii=False))
         return 0
+    if args.cmd == "tour-real-init":
+        t = init_real_tournament(args.run_dir, task=args.task, shot=args.shot)
+        print(json.dumps(_tour_observe_dict(t), ensure_ascii=False))
+        return 0
     if args.cmd == "tour-observe":
         t = load_tournament(args.run_dir)
         print(json.dumps(_tour_observe_dict(t), ensure_ascii=False))
@@ -228,6 +241,10 @@ def main(argv: list[str]) -> int:
         return 0
     if args.cmd == "fc-init":
         ep = init_forecast(args.run_dir, default_forecast_config())
+        print(json.dumps(_fc_observe_dict(ep), ensure_ascii=False))
+        return 0
+    if args.cmd == "fc-real-init":
+        ep = init_real_forecast(args.run_dir, args.curve)
         print(json.dumps(_fc_observe_dict(ep), ensure_ascii=False))
         return 0
     if args.cmd == "fc-observe":

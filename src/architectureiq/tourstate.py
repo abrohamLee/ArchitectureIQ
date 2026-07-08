@@ -3,7 +3,8 @@ import os
 
 from architectureiq.curvebank import Candidate
 from architectureiq.datasets import DatasetSpec
-from architectureiq.tournament import Tournament, TournamentConfig
+from architectureiq.realcurvebank import RealBank
+from architectureiq.tournament import Tournament, TournamentConfig, real_tournament_config
 
 _STATE = "tour_state.json"
 
@@ -19,10 +20,20 @@ def init_tournament(run_dir: str, config: TournamentConfig) -> Tournament:
     return t
 
 
+def init_real_tournament(run_dir: str, task: str = "piqa", shot: str = "zero-shot") -> Tournament:
+    """real tier:真 Pythia 尺寸锦标赛,候选=该 task/shot 的全部模型真曲线。"""
+    os.makedirs(run_dir, exist_ok=True)
+    cfg, bank = real_tournament_config(task, shot)
+    t = Tournament(cfg, bank=bank)
+    save_tournament(run_dir, t)
+    return t
+
+
 def save_tournament(run_dir: str, t: Tournament) -> None:
     os.makedirs(run_dir, exist_ok=True)
     c = t.config
     payload = {
+        "real": isinstance(t.bank, RealBank),
         "config": {
             "spec": c.spec.__dict__,
             "candidates": [cand.__dict__ for cand in c.candidates],
@@ -57,4 +68,6 @@ def load_tournament(run_dir: str) -> Tournament:
         regret_threshold=cfg_d["regret_threshold"],
         seed=cfg_d["seed"],
     )
-    return Tournament(config, trained=p["trained"], budget_spent=p["budget_spent"])
+    # real tier:从候选曲线 id 重建 RealBank(候选 id 即真曲线 id)
+    bank = RealBank([cand.id for cand in config.candidates]) if p.get("real") else None
+    return Tournament(config, bank=bank, trained=p["trained"], budget_spent=p["budget_spent"])
