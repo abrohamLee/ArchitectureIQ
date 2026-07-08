@@ -28,7 +28,8 @@ CURATED_TASKS = [
     "arc_easy", "arc_challenge", "logiqa", "wsc",
     "openbookqa", "lambada_standard",
 ]
-METRIC = "acc"
+# acc = 原始准确率;acc_norm = 长度归一化 —— 同任务两条性质不同的真实曲线
+METRICS = ["acc", "acc_norm"]
 
 
 def _get(url: str) -> bytes:
@@ -68,15 +69,21 @@ def build_curves(model: str, shot: str, files: list[tuple[int, str]]) -> list[di
     step_results.sort(key=lambda x: x[0])
     records = []
     for task in CURATED_TASKS:
-        steps, values = [], []
-        for step, results in step_results:
-            if task in results and METRIC in results[task]:
-                steps.append(step)
-                values.append(results[task][METRIC])
-        if len(steps) >= 10:  # 至少 10 点才算一条曲线
+        for metric in METRICS:
+            steps, values = [], []
+            for step, results in step_results:
+                if task in results and metric in results[task]:
+                    steps.append(step)
+                    values.append(results[task][metric])
+            if len(steps) < 10:  # 至少 10 点才算一条曲线
+                continue
+            # acc 用 4 段 id(向后兼容);acc_norm 加后缀
+            cid = f"pythia|{model}|{shot}|{task}"
+            if metric != "acc":
+                cid += f"|{metric}"
             records.append({
-                "id": f"pythia|{model}|{shot}|{task}",
-                "model": model, "shot": shot, "task": task, "metric": METRIC,
+                "id": cid,
+                "model": model, "shot": shot, "task": task, "metric": metric,
                 "steps": steps, "values": values,
                 "source": f"EleutherAI/pythia evals/pythia-v1/{model}/{shot}",
             })
