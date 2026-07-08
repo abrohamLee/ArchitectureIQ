@@ -5,6 +5,7 @@
 real tier 用它替换玩具 CurveBank —— 只存真跑 ground truth,绝不 surrogate 预测。
 id 形如 "pythia|pythia-1.4b|zero-shot|piqa"。
 """
+import glob
 import json
 import os
 
@@ -15,19 +16,24 @@ _DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file_
 _BANK = os.path.join(_DATA_DIR, "pythia_curves.jsonl")
 
 
-def _records(path: str = _BANK) -> list[dict]:
-    if not os.path.exists(path):
-        raise FileNotFoundError(path)
-    with open(path) as f:
-        return [json.loads(line) for line in f if line.strip()]
+def _records(path: str | None = None) -> list[dict]:
+    """默认合并 data/real_curves 下所有 *.jsonl(pythia + marin ...);传 path 则只读该文件。"""
+    paths = [path] if path else sorted(glob.glob(os.path.join(_DATA_DIR, "*.jsonl")))
+    if not paths:
+        raise FileNotFoundError(_DATA_DIR)
+    recs = []
+    for p in paths:
+        with open(p) as f:
+            recs.extend(json.loads(line) for line in f if line.strip())
+    return recs
 
 
-def load_bank(path: str = _BANK) -> dict[str, dict]:
+def load_bank(path: str | None = None) -> dict[str, dict]:
     """回 {id: record}。"""
     return {r["id"]: r for r in _records(path)}
 
 
-def list_curve_ids(path: str = _BANK) -> list[str]:
+def list_curve_ids(path: str | None = None) -> list[str]:
     return sorted(load_bank(path).keys())
 
 
@@ -36,7 +42,7 @@ def _to_curve(rec: dict) -> LearningCurve:
     return LearningCurve(steps=list(rec["steps"]), loss=[], acc=list(rec["values"]))
 
 
-def get_curve(curve_id: str, path: str = _BANK) -> LearningCurve:
+def get_curve(curve_id: str, path: str | None = None) -> LearningCurve:
     bank = load_bank(path)
     if curve_id not in bank:
         raise KeyError(curve_id)
@@ -44,7 +50,7 @@ def get_curve(curve_id: str, path: str = _BANK) -> LearningCurve:
 
 
 def filter_ids(model: str | None = None, shot: str | None = None,
-               task: str | None = None, metric: str = "acc", path: str = _BANK) -> list[str]:
+               task: str | None = None, metric: str = "acc", path: str | None = None) -> list[str]:
     """按维度筛选曲线 id,便于按尺寸/shot/任务组织 tier。"""
     out = []
     for rec in _records(path):
@@ -67,7 +73,7 @@ class RealBank:
     同 (task, shot) 的曲线共享 checkpoint 网格,故 checkpoints 一致。
     """
 
-    def __init__(self, curve_ids: list[str], path: str = _BANK):
+    def __init__(self, curve_ids: list[str], path: str | None = None):
         self._curves = {cid: get_curve(cid, path) for cid in curve_ids}
 
     def curve(self, cand):
