@@ -6,6 +6,12 @@ from architectureiq.episode import default_config
 from architectureiq.runstate import init_state, load_state, save_state
 from architectureiq.blackbox import default_blackbox_config
 from architectureiq.blackboxstate import init_blackbox, load_blackbox, save_blackbox
+from architectureiq.diagnostic import PATHOLOGIES, QUERY_COSTS, default_diagnostic_config
+from architectureiq.diagnosticstate import (
+    init_diagnostic,
+    load_diagnostic,
+    save_diagnostic,
+)
 from architectureiq.doctor import doctor_config
 from architectureiq.doctorstate import init_doctor, load_doctor, save_doctor
 from architectureiq.leverid import default_leverid_config
@@ -174,6 +180,26 @@ def _bbl_observe_dict(ep) -> dict:
     }
 
 
+DX_RULES = (
+    "给你一条**病态**训练曲线(sick_curve)—— 但多个病因(lr_too_low / dead_relu / "
+    "vanishing_grad)在 loss 曲线上长得几乎一样,光看曲线诊断不出。你要花预算 dx-query "
+    "不同的 observable(grad_norm / weight_norm / dead_fraction / per_layer_grad,各不同价),"
+    "不同病因在不同 observable 上留签名。查对信号后 dx-answer 定因。分数 = 诊断对 × 效率"
+    "(查得越少越高)。地板 = 不查只猜多数病因。"
+)
+
+
+def _dx_observe_dict(ep) -> dict:
+    return {
+        "sick_curve": ep.sick_curve(),
+        "causes": PATHOLOGIES,
+        "observables": QUERY_COSTS,
+        "budget": ep.config.budget,
+        "budget_spent": ep.budget_spent,
+        "rules": DX_RULES,
+    }
+
+
 WT_RULES = (
     "N 个候选 config 竞争,你要选出**大尺度**上最优的那个。但你只能花预算在各**尺度**跑"
     "便宜代理实验(wt-run --candidate C --scale s,小尺度便宜、大尺度贵),看该候选在该尺度的值。"
@@ -293,6 +319,17 @@ def main(argv: list[str]) -> int:
     wc = sub.add_parser("wt-commit")
     wc.add_argument("--run-dir", required=True)
     wc.add_argument("--candidate", required=True)
+    xi = sub.add_parser("dx-init")
+    xi.add_argument("--run-dir", required=True)
+    xi.add_argument("--pathology", default="dead_relu")
+    xo = sub.add_parser("dx-observe")
+    xo.add_argument("--run-dir", required=True)
+    xq = sub.add_parser("dx-query")
+    xq.add_argument("--run-dir", required=True)
+    xq.add_argument("--observable", required=True)
+    xa = sub.add_parser("dx-answer")
+    xa.add_argument("--run-dir", required=True)
+    xa.add_argument("--cause", required=True)
     args = parser.parse_args(argv)
 
     if args.cmd == "init":
@@ -455,6 +492,26 @@ def main(argv: list[str]) -> int:
         wt = load_windtunnel(args.run_dir)
         res = wt.commit(args.candidate)
         save_windtunnel(args.run_dir, wt)
+        print(json.dumps(res.__dict__, ensure_ascii=False))
+        return 0
+    if args.cmd == "dx-init":
+        ep = init_diagnostic(args.run_dir, default_diagnostic_config(args.pathology))
+        print(json.dumps(_dx_observe_dict(ep), ensure_ascii=False))
+        return 0
+    if args.cmd == "dx-observe":
+        ep = load_diagnostic(args.run_dir)
+        print(json.dumps(_dx_observe_dict(ep), ensure_ascii=False))
+        return 0
+    if args.cmd == "dx-query":
+        ep = load_diagnostic(args.run_dir)
+        res = ep.query(args.observable)
+        save_diagnostic(args.run_dir, ep)
+        print(json.dumps(res.__dict__, ensure_ascii=False))
+        return 0
+    if args.cmd == "dx-answer":
+        ep = load_diagnostic(args.run_dir)
+        res = ep.answer(args.cause)
+        save_diagnostic(args.run_dir, ep)
         print(json.dumps(res.__dict__, ensure_ascii=False))
         return 0
     return 1
