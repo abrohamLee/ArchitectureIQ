@@ -44,7 +44,7 @@ def get_curve(curve_id: str, path: str = _BANK) -> LearningCurve:
 
 
 def filter_ids(model: str | None = None, shot: str | None = None,
-               task: str | None = None, path: str = _BANK) -> list[str]:
+               task: str | None = None, metric: str = "acc", path: str = _BANK) -> list[str]:
     """按维度筛选曲线 id,便于按尺寸/shot/任务组织 tier。"""
     out = []
     for rec in _records(path):
@@ -54,5 +54,37 @@ def filter_ids(model: str | None = None, shot: str | None = None,
             continue
         if task and rec["task"] != task:
             continue
+        if metric and rec["metric"] != metric:
+            continue
         out.append(rec["id"])
     return sorted(out)
+
+
+class RealBank:
+    """用真实曲线支撑 Tournament 的后端,接口对齐玩具 CurveBank。
+
+    候选 = 一组真曲线(如同 task/shot 下的多个 Pythia 尺寸);candidate.id = 曲线 id。
+    同 (task, shot) 的曲线共享 checkpoint 网格,故 checkpoints 一致。
+    """
+
+    def __init__(self, curve_ids: list[str], path: str = _BANK):
+        self._curves = {cid: get_curve(cid, path) for cid in curve_ids}
+
+    def curve(self, cand):
+        return self._curves[cand.id]
+
+    def acc_at(self, cand, steps: int) -> float:
+        c = self._curves[cand.id]
+        idx = 0
+        for i, s in enumerate(c.steps):
+            if s <= steps:
+                idx = i
+            else:
+                break
+        return c.acc[idx]
+
+    def final_acc(self, cand) -> float:
+        return self._curves[cand.id].acc[-1]
+
+    def checkpoints(self) -> list[int]:
+        return list(next(iter(self._curves.values())).steps)

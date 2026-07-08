@@ -43,10 +43,14 @@ class SHResult:
     regret: float
 
 
-def run_successive_halving(config: TournamentConfig, eta: int = 2) -> SHResult:
-    """Successive Halving 非智能地板:语义盲,只看 acc 排序、逐轮砍半。"""
-    bank = CurveBank(config.spec, max_steps=config.max_steps,
-                     eval_every=config.eval_every, seed=config.seed)
+def run_successive_halving(config: TournamentConfig, eta: int = 2, bank=None) -> SHResult:
+    """Successive Halving 非智能地板:语义盲,只看 acc 排序、逐轮砍半。
+
+    bank=None 时按 config.spec 建玩具 CurveBank;传入 RealBank 则跑真曲线。
+    """
+    if bank is None:
+        bank = CurveBank(config.spec, max_steps=config.max_steps,
+                         eval_every=config.eval_every, seed=config.seed)
     survivors = list(config.candidates)
     trained: dict[str, int] = {c.id: 0 for c in survivors}
     steps_spent = 0
