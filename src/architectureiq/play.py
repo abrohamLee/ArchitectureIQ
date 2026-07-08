@@ -14,8 +14,11 @@ from architectureiq.diagnosticstate import (
 )
 from architectureiq.doctor import doctor_config
 from architectureiq.doctorstate import init_doctor, load_doctor, save_doctor
+from architectureiq.leverfingerprint import default_leverfp_config
+from architectureiq.leverfingerprintstate import init_leverfp, load_leverfp, save_leverfp
 from architectureiq.leverid import default_leverid_config
 from architectureiq.leveridstate import init_leverid, load_leverid, save_leverid
+from architectureiq.levers import lever_values
 from architectureiq.windtunnel import default_windtunnel_config
 from architectureiq.windtunnelstate import (
     init_windtunnel,
@@ -161,6 +164,27 @@ def _bb_observe_dict(ep) -> dict:
     }
 
 
+FPL_RULES = (
+    "设计一个数据集,让一个真实杠杆家族的答案(如优化器 {adam,sgd,rmsprop} / 激活 "
+    "{relu,tanh,gelu})在其上训练产生的「结构优势」签名彼此**可区分**。默认/random 数据"
+    "会让签名塌成一团;必须设计好数据让这些杠杆的动力学差异显形。probe 试探、commit 用 "
+    "held-out seed 评分:margin 过阈值(可区分)× 效率。"
+)
+
+
+def _fpl_observe_dict(ep) -> dict:
+    return {
+        "lever_family": ep.config.family,
+        "lever_values": lever_values(ep.config.family),
+        "budget_steps": ep.config.budget_steps,
+        "budget_spent": ep.budget_spent,
+        "probe_cost": ep.probe_cost(),
+        "correct_margin": ep.config.correct_margin,
+        "dsl_schema": DSL_SCHEMA,
+        "rules": FPL_RULES,
+    }
+
+
 BBL_RULES = (
     "环境藏了一个真实杠杆的答案(优化器 ∈ 池)。设计探测数据集(bbl-probe),环境返回"
     "池中各答案在你数据上的参考「结构优势」签名 + 黑盒的 mystery 签名;比对 mystery 最"
@@ -295,6 +319,15 @@ def main(argv: list[str]) -> int:
     bg = sub.add_parser("bb-guess")
     bg.add_argument("--run-dir", required=True)
     bg.add_argument("--arch", required=True)
+    fpi = sub.add_parser("fpl-init")
+    fpi.add_argument("--run-dir", required=True)
+    fpi.add_argument("--lever", default="optimizer")
+    fpo = sub.add_parser("fpl-observe")
+    fpo.add_argument("--run-dir", required=True)
+    for name in ("fpl-probe", "fpl-commit"):
+        sp = sub.add_parser(name)
+        sp.add_argument("--run-dir", required=True)
+        _add_spec_args(sp)
     li = sub.add_parser("bbl-init")
     li.add_argument("--run-dir", required=True)
     li.add_argument("--family", default="optimizer")
@@ -452,6 +485,26 @@ def main(argv: list[str]) -> int:
         ep = load_blackbox(args.run_dir)
         res = ep.guess(args.arch)
         save_blackbox(args.run_dir, ep)
+        print(json.dumps(res.__dict__, ensure_ascii=False))
+        return 0
+    if args.cmd == "fpl-init":
+        ep = init_leverfp(args.run_dir, default_leverfp_config(args.lever))
+        print(json.dumps(_fpl_observe_dict(ep), ensure_ascii=False))
+        return 0
+    if args.cmd == "fpl-observe":
+        ep = load_leverfp(args.run_dir)
+        print(json.dumps(_fpl_observe_dict(ep), ensure_ascii=False))
+        return 0
+    if args.cmd == "fpl-probe":
+        ep = load_leverfp(args.run_dir)
+        res = ep.probe(_spec(args))
+        save_leverfp(args.run_dir, ep)
+        print(json.dumps(res.__dict__, ensure_ascii=False))
+        return 0
+    if args.cmd == "fpl-commit":
+        ep = load_leverfp(args.run_dir)
+        res = ep.commit(_spec(args))
+        save_leverfp(args.run_dir, ep)
         print(json.dumps(res.__dict__, ensure_ascii=False))
         return 0
     if args.cmd == "bbl-init":

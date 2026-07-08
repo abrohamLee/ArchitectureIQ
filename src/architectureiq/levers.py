@@ -7,18 +7,54 @@ retrain(生成式任务的前提)。
 
 签名 = 结构优势 Δ-签名(复用 fingerprint.structure_advantage),固定基座 mlp、只换优化器。
 """
+import torch
+from torch import nn
+
 from architectureiq.datasets import DatasetSpec, generate
+from architectureiq.determinism import set_determinism
 from architectureiq.fingerprint import structure_advantage
 
-# 优化器杠杆:真实答案集 + 各自合适的 lr(已验证在玩具上可分)
+# 真实杠杆的答案集(玩具尺度跑真实杠杆:杠杆真、尺度玩具、可 retrain)
 OPTIMIZERS = ["adam", "sgd", "rmsprop"]
 _OPT_LR = {"adam": 1e-2, "sgd": 0.3, "rmsprop": 1e-2}
+ACTIVATIONS = ["relu", "tanh", "gelu"]
+_ACT = {"relu": nn.ReLU, "tanh": nn.Tanh, "gelu": nn.GELU}
 
-LEVER_FAMILIES = {"optimizer": OPTIMIZERS}
+LEVER_FAMILIES = {"optimizer": OPTIMIZERS, "activation": ACTIVATIONS}
 
 
 def lever_values(family: str) -> list[str]:
     return list(LEVER_FAMILIES[family])
+
+
+def _act_mlp(activation: str, in_dim: int, n_classes: int, hidden: int = 64) -> nn.Module:
+    A = _ACT[activation]
+    return nn.Sequential(nn.Linear(in_dim, hidden), A(), nn.Linear(hidden, hidden), A(),
+                         nn.Linear(hidden, n_classes))
+
+
+def _act_signature(value, X, y, in_dim, n_classes, steps, seed, eval_every) -> list[float]:
+    """激活杠杆的结构优势 Δ-签名(自含:MLP 换激活 + Adam,减掉标签打乱基线)。"""
+    g = torch.Generator().manual_seed(seed * 100 + 7)
+    y_shuf = y[torch.randperm(len(y), generator=g)]
+
+    def curve(labels):
+        set_determinism(seed)
+        m = _act_mlp(value, in_dim, n_classes)
+        opt = torch.optim.Adam(m.parameters(), lr=1e-2)
+        out = []
+        for s in range(steps + 1):
+            if s % eval_every == 0:
+                with torch.no_grad():
+                    out.append(nn.functional.cross_entropy(m(X), labels).item())
+            if s < steps:
+                opt.zero_grad()
+                nn.functional.cross_entropy(m(X), labels).backward()
+                opt.step()
+        return out
+
+    real, ctrl = curve(y), curve(y_shuf)
+    return [c - r for c, r in zip(ctrl, real)]
 
 
 def lever_signature(family: str, value: str, spec: DatasetSpec, seed: int,
@@ -28,4 +64,6 @@ def lever_signature(family: str, value: str, spec: DatasetSpec, seed: int,
     if family == "optimizer":
         return structure_advantage("mlp", X, y, in_dim, n_classes, steps=steps, seed=seed,
                                    eval_every=eval_every, optimizer_name=value, lr=_OPT_LR[value])
+    if family == "activation":
+        return _act_signature(value, X, y, in_dim, n_classes, steps, seed, eval_every)
     raise ValueError(f"unknown lever family: {family}")
