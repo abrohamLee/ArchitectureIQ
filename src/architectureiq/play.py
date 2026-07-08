@@ -4,6 +4,12 @@ import json
 from architectureiq.datasets import DatasetSpec
 from architectureiq.episode import default_config
 from architectureiq.runstate import init_state, load_state, save_state
+from architectureiq.tournament import default_tournament_config
+from architectureiq.tourstate import (
+    init_tournament,
+    load_tournament,
+    save_tournament,
+)
 
 RULES = (
     "设计一个数据集(DatasetSpec),使 4 个架构在其上训练产生的「结构优势」"
@@ -39,6 +45,26 @@ def _observe_dict(env) -> dict:
     }
 
 
+TOUR_RULES = (
+    "一组 candidate(arch×lr)在固定数据集上竞争。用 tour-advance 花预算把某候选"
+    "多训几步、看它的部分 acc;用 tour-answer 挑出你认为最终最优的候选。分数 = "
+    "regret 是否达标(选中接近真最优) × 效率(总 steps 越少越高,平方惩罚)。"
+)
+
+
+def _tour_observe_dict(t) -> dict:
+    return {
+        "candidates": [c.id for c in t.config.candidates],
+        "budget_steps": t.config.budget_steps,
+        "budget_spent": t.budget_spent,
+        "max_steps": t.config.max_steps,
+        "eval_every": t.config.eval_every,
+        "trained": t.snapshot()["trained"],
+        "regret_threshold": t.config.regret_threshold,
+        "rules": TOUR_RULES,
+    }
+
+
 def _spec(args) -> DatasetSpec:
     return spec_from_args(args.family, args.n_samples, args.modulus, args.n_bits, args.label_noise)
 
@@ -61,6 +87,16 @@ def main(argv: list[str]) -> int:
         sp = sub.add_parser(name)
         sp.add_argument("--run-dir", required=True)
         _add_spec_args(sp)
+    for name in ("tour-init", "tour-observe"):
+        sp = sub.add_parser(name)
+        sp.add_argument("--run-dir", required=True)
+    ta = sub.add_parser("tour-advance")
+    ta.add_argument("--run-dir", required=True)
+    ta.add_argument("--candidate", required=True)
+    ta.add_argument("--steps", type=int, required=True)
+    tan = sub.add_parser("tour-answer")
+    tan.add_argument("--run-dir", required=True)
+    tan.add_argument("--candidate", required=True)
     args = parser.parse_args(argv)
 
     if args.cmd == "init":
@@ -81,6 +117,26 @@ def main(argv: list[str]) -> int:
         env = load_state(args.run_dir)
         res = env.commit(_spec(args))
         save_state(args.run_dir, env)
+        print(json.dumps(res.__dict__, ensure_ascii=False))
+        return 0
+    if args.cmd == "tour-init":
+        t = init_tournament(args.run_dir, default_tournament_config())
+        print(json.dumps(_tour_observe_dict(t), ensure_ascii=False))
+        return 0
+    if args.cmd == "tour-observe":
+        t = load_tournament(args.run_dir)
+        print(json.dumps(_tour_observe_dict(t), ensure_ascii=False))
+        return 0
+    if args.cmd == "tour-advance":
+        t = load_tournament(args.run_dir)
+        res = t.advance(args.candidate, args.steps)
+        save_tournament(args.run_dir, t)
+        print(json.dumps(res.__dict__, ensure_ascii=False))
+        return 0
+    if args.cmd == "tour-answer":
+        t = load_tournament(args.run_dir)
+        res = t.answer(args.candidate)
+        save_tournament(args.run_dir, t)
         print(json.dumps(res.__dict__, ensure_ascii=False))
         return 0
     return 1
