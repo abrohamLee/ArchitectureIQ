@@ -40,26 +40,44 @@ def main():
     })
     fig, ax = plt.subplots(figsize=(11, 7))
 
+    pt = {}  # cfg -> (cost, score)
     for cfg, a in agg.items():
         n = a["n"] or 1
-        score = 100.0 * sum(a["reward"]) / n
-        cost = sum(a["cost"]) / n  # 每任务平均 $
+        pt[cfg] = (sum(a["cost"]) / n, 100.0 * sum(a["reward"]) / n)
+
+    # GPT-5.5 的 effort 阶梯用虚线连起来(同模型、成本递增),像 ARC 榜
+    ladder = [c for c in ["GPT-5.5 (low)", "GPT-5.5 (med)", "GPT-5.5 (high)"] if c in pt]
+    if len(ladder) > 1:
+        xs = [pt[c][0] for c in ladder]; ys = [pt[c][1] for c in ladder]
+        ax.plot(xs, ys, "--", color="#3B78C4", alpha=0.5, zorder=2, linewidth=1.2)
+
+    # 标签偏移(避免 100% 处堆叠):(dx_pts, dy_pts, ha, va)
+    LABEL = {
+        "GPT-5.5 (low)":  (0, 12, "center", "bottom"),
+        "GPT-5.5 (med)":  (0, -16, "center", "top"),
+        "GPT-5.5 (high)": (8, 10, "left", "bottom"),
+        "Sonnet":         (10, 6, "left", "bottom"),
+        "Opus":           (10, 0, "left", "center"),
+    }
+    for cfg, (cost, score) in pt.items():
         color = COLOR.get(cfg, "#888")
-        ax.scatter([cost], [score], s=180, color=color, zorder=3,
-                   edgecolors="white", linewidths=0.6)
-        ax.annotate(f"  {cfg}", (cost, score), color=color, fontsize=11,
-                    va="center", ha="left", fontweight="bold")
+        ax.scatter([cost], [score], s=190, color=color, zorder=4,
+                   edgecolors="white", linewidths=0.7)
+        dx, dy, ha, va = LABEL.get(cfg, (8, 0, "left", "center"))
+        ax.annotate(cfg, (cost, score), color=color, fontsize=11.5, fontweight="bold",
+                    textcoords="offset points", xytext=(dx, dy), ha=ha, va=va)
 
     ax.set_xscale("log")
-    ax.set_xlabel("每任务成本  COST PER TASK ($, 参考 API 单价)", fontsize=13, labelpad=10)
-    ax.set_ylabel("得分  SCORE (%)", fontsize=13, labelpad=10)
+    ax.set_xlabel("COST PER TASK ($, est. API price)", fontsize=13, labelpad=10)
+    ax.set_ylabel("SCORE (%)", fontsize=13, labelpad=10)
     ax.set_ylim(-5, 105)
-    ax.set_title("ArchitectureIQ Leaderboard —— 真实 tier(4 任务 × 1 局)",
+    ax.set_title("ArchitectureIQ Leaderboard — real tiers (4 tasks x 1 episode)",
                  fontsize=17, pad=18, color="#f2f2f2")
     ax.grid(True, which="both", alpha=0.12, color="#666")
     ax.set_axisbelow(True)
     fig.text(0.5, 0.02,
-             "codex=GPT-5.5(low/med/high) · claude-code=Opus/Sonnet · 成本按参考单价估算 · 得分=4 任务正确率均值",
+             "codex = GPT-5.5 (low/med/high)  ·  claude-code = Opus / Sonnet  ·  "
+             "cost estimated from tokens x reference price  ·  score = mean correctness over 4 tasks",
              ha="center", color="#888", fontsize=9)
     fig.tight_layout(rect=[0, 0.04, 1, 1])
     fig.savefig(OUT, dpi=150, facecolor=fig.get_facecolor())
