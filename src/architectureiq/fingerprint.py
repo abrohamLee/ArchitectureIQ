@@ -22,6 +22,8 @@ def structure_advantage(
     steps: int,
     seed: int,
     eval_every: int = 20,
+    optimizer_name: str = "adam",
+    lr: float = 1e-2,
 ) -> list[float]:
     """架构 A 的「结构优势」签名 Δ(k) = loss(标签打乱, k步) − loss(真实数据, k步)。
 
@@ -32,8 +34,9 @@ def structure_advantage(
     g = torch.Generator().manual_seed(seed * 100 + 7)
     y_shuffled = y[torch.randperm(len(y), generator=g)]
 
-    real = train_curve(arch, X, y, in_dim, n_classes, steps=steps, seed=seed, eval_every=eval_every)
-    ctrl = train_curve(arch, X, y_shuffled, in_dim, n_classes, steps=steps, seed=seed, eval_every=eval_every)
+    kw = dict(steps=steps, seed=seed, eval_every=eval_every, optimizer_name=optimizer_name, lr=lr)
+    real = train_curve(arch, X, y, in_dim, n_classes, **kw)
+    ctrl = train_curve(arch, X, y_shuffled, in_dim, n_classes, **kw)
     return [c - r for c, r in zip(ctrl.loss, real.loss)]
 
 

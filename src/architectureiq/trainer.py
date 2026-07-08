@@ -14,6 +14,19 @@ class LearningCurve:
     acc: list[float]
 
 
+def _make_optimizer(name: str, params, lr: float):
+    """按名建优化器 —— 优化器杠杆(adam/sgd/rmsprop…)的真实答案集。"""
+    if name == "adam":
+        return torch.optim.Adam(params, lr=lr)
+    if name == "adamw":
+        return torch.optim.AdamW(params, lr=lr)
+    if name == "sgd":
+        return torch.optim.SGD(params, lr=lr, momentum=0.9)
+    if name == "rmsprop":
+        return torch.optim.RMSprop(params, lr=lr)
+    raise ValueError(f"unknown optimizer: {name}")
+
+
 def _evaluate(model: nn.Module, X: torch.Tensor, y: torch.Tensor) -> tuple[float, float]:
     model.eval()
     with torch.no_grad():
@@ -34,10 +47,11 @@ def train_curve(
     seed: int,
     eval_every: int = 10,
     lr: float = 1e-2,
+    optimizer_name: str = "adam",
 ) -> LearningCurve:
     set_determinism(seed)
     model = build_model(arch, in_dim, n_classes)
-    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    opt = _make_optimizer(optimizer_name, model.parameters(), lr)
 
     rec_steps: list[int] = []
     rec_loss: list[float] = []
