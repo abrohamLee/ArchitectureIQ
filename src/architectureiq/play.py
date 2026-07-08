@@ -4,6 +4,8 @@ import json
 from architectureiq.datasets import DatasetSpec
 from architectureiq.episode import default_config
 from architectureiq.runstate import init_state, load_state, save_state
+from architectureiq.doctor import doctor_config
+from architectureiq.doctorstate import init_doctor, load_doctor, save_doctor
 from architectureiq.forecast import default_forecast_config
 from architectureiq.forecaststate import (
     init_forecast,
@@ -84,6 +86,25 @@ def _fc_observe_dict(ep) -> dict:
     }
 
 
+DR_RULES = (
+    "给你一条病态训练曲线(sick_curve)。读它的 loss 形状诊断病因:loss 曾冲高过起点="
+    "LR 太高,应降;loss 平台不降=LR 太低,应升。用 dr-treat 试某个 lr,或凭诊断直接 "
+    "dr-commit 开药。分数 = 是否治愈(final_acc≥cure_acc) × 效率(试药越少越高,平方惩罚)。"
+)
+
+
+def _dr_observe_dict(ep) -> dict:
+    return {
+        "sick_curve": ep.sick_curve(),
+        "grid": ep.config.grid,
+        "budget_steps": ep.config.budget_steps,
+        "budget_spent": ep.budget_spent,
+        "cure_acc": ep.config.cure_acc,
+        "treat_cost": ep.treat_cost(),
+        "rules": DR_RULES,
+    }
+
+
 def _spec(args) -> DatasetSpec:
     return spec_from_args(args.family, args.n_samples, args.modulus, args.n_bits, args.label_noise)
 
@@ -122,6 +143,17 @@ def main(argv: list[str]) -> int:
     fp = sub.add_parser("fc-predict")
     fp.add_argument("--run-dir", required=True)
     fp.add_argument("--value", type=float, required=True)
+    di = sub.add_parser("dr-init")
+    di.add_argument("--run-dir", required=True)
+    di.add_argument("--pathology", default="too_high")
+    do = sub.add_parser("dr-observe")
+    do.add_argument("--run-dir", required=True)
+    dt = sub.add_parser("dr-treat")
+    dt.add_argument("--run-dir", required=True)
+    dt.add_argument("--lr", type=float, required=True)
+    dc = sub.add_parser("dr-commit")
+    dc.add_argument("--run-dir", required=True)
+    dc.add_argument("--lr", type=float, required=True)
     args = parser.parse_args(argv)
 
     if args.cmd == "init":
@@ -176,6 +208,26 @@ def main(argv: list[str]) -> int:
         ep = load_forecast(args.run_dir)
         res = ep.predict(args.value)
         save_forecast(args.run_dir, ep)
+        print(json.dumps(res.__dict__, ensure_ascii=False))
+        return 0
+    if args.cmd == "dr-init":
+        ep = init_doctor(args.run_dir, doctor_config(args.pathology))
+        print(json.dumps(_dr_observe_dict(ep), ensure_ascii=False))
+        return 0
+    if args.cmd == "dr-observe":
+        ep = load_doctor(args.run_dir)
+        print(json.dumps(_dr_observe_dict(ep), ensure_ascii=False))
+        return 0
+    if args.cmd == "dr-treat":
+        ep = load_doctor(args.run_dir)
+        res = ep.treat(args.lr)
+        save_doctor(args.run_dir, ep)
+        print(json.dumps(res.__dict__, ensure_ascii=False))
+        return 0
+    if args.cmd == "dr-commit":
+        ep = load_doctor(args.run_dir)
+        res = ep.commit(args.lr)
+        save_doctor(args.run_dir, ep)
         print(json.dumps(res.__dict__, ensure_ascii=False))
         return 0
     return 1
