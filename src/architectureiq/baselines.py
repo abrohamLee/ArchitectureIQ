@@ -1,6 +1,7 @@
 import random
 from dataclasses import dataclass
 
+from architectureiq.blackbox import BlackboxConfig, BlackboxEpisode, nearest
 from architectureiq.curvebank import CurveBank
 from architectureiq.datasets import DatasetSpec
 from architectureiq.doctor import DoctorConfig, DoctorEpisode
@@ -90,3 +91,19 @@ def run_grid_search_doctor(config: DoctorConfig) -> GridDoctorResult:
             best_acc, best_lr = r.final_acc, lr
     res = ep.commit(best_lr)
     return GridDoctorResult(best_lr, ep.budget_spent, res.correct)
+
+
+@dataclass
+class BlackboxBaselineResult:
+    chosen: str
+    correct: bool
+    steps_spent: int
+
+
+def run_random_probe_blackbox(config: BlackboxConfig) -> BlackboxBaselineResult:
+    """语义盲地板:固定用 random 数据集探测一次、最近邻猜、guess。"""
+    ep = BlackboxEpisode(config)
+    res = ep.probe(DatasetSpec(family="random", n_samples=300, modulus=7))
+    chosen = nearest(res.mystery, res.references)
+    g = ep.guess(chosen)
+    return BlackboxBaselineResult(chosen, g.correct, ep.budget_spent)
