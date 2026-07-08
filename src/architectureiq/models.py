@@ -39,9 +39,38 @@ class _TinyTransformer(nn.Module):
         return self.head(pooled)
 
 
+class _GRU(nn.Module):
+    def __init__(self, in_dim: int, n_classes: int, hidden: int = 32):
+        super().__init__()
+        self.gru = nn.GRU(input_size=1, hidden_size=hidden, batch_first=True)
+        self.head = nn.Linear(hidden, n_classes)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        seq = x.unsqueeze(-1)  # (batch, in_dim, 1)
+        _, h = self.gru(seq)
+        return self.head(h.squeeze(0))
+
+
+class _CNN1d(nn.Module):
+    def __init__(self, in_dim: int, n_classes: int, channels: int = 16):
+        super().__init__()
+        self.conv = nn.Conv1d(1, channels, kernel_size=3, padding=1)
+        self.act = nn.ReLU()
+        self.head = nn.Linear(channels, n_classes)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        feat = self.act(self.conv(x.unsqueeze(1)))  # (batch, channels, in_dim)
+        pooled = feat.mean(dim=2)
+        return self.head(pooled)
+
+
 def build_model(arch: str, in_dim: int, n_classes: int) -> nn.Module:
     if arch == "mlp":
         return _MLP(in_dim, n_classes)
     if arch == "tiny_transformer":
         return _TinyTransformer(in_dim, n_classes)
+    if arch == "gru":
+        return _GRU(in_dim, n_classes)
+    if arch == "cnn1d":
+        return _CNN1d(in_dim, n_classes)
     raise ValueError(f"unknown arch: {arch}")

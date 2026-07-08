@@ -31,6 +31,25 @@ def test_generic_random_dataset_margin_collapses():
     assert result.margin <= 0.35
 
 
+def test_four_arch_structured_beats_generic_margin():
+    # 四架构:结构刺激(modular addition)产生的 Δ-签名分离度应明显高于 generic。
+    # 注意:四架构下 generic 的 nuisance 残留比两架构大,margin gap 更窄、且随 seed
+    # 抖动 —— 需要更多 seed 才稳(3+3 已足够拉开;见 spec §7① 的统计素养讨论)。
+    # 故用「相对」断言(结构 > generic × 系数)而非脆弱的绝对魔数。
+    archs = ["mlp", "tiny_transformer", "gru", "cnn1d"]
+    struct = score_fingerprint(
+        DatasetSpec(family="modular_addition", n_samples=300, modulus=7),
+        archs, ref_seeds=[0, 1, 2], query_seeds=[3, 4, 5], steps=100,
+    )
+    generic = score_fingerprint(
+        DatasetSpec(family="random", n_samples=300, modulus=7),
+        archs, ref_seeds=[0, 1, 2], query_seeds=[3, 4, 5], steps=100,
+    )
+    assert struct.accuracy >= 0.75
+    assert struct.margin >= 0.2
+    assert struct.margin > generic.margin * 1.4
+
+
 def test_score_is_deterministic():
     spec = DatasetSpec(family="modular_addition", n_samples=200, modulus=7)
     r1 = score_fingerprint(spec, ARCHS, [0], [1], steps=40)
