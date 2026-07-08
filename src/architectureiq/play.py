@@ -4,6 +4,12 @@ import json
 from architectureiq.datasets import DatasetSpec
 from architectureiq.episode import default_config
 from architectureiq.runstate import init_state, load_state, save_state
+from architectureiq.forecast import default_forecast_config
+from architectureiq.forecaststate import (
+    init_forecast,
+    load_forecast,
+    save_forecast,
+)
 from architectureiq.tournament import default_tournament_config
 from architectureiq.tourstate import (
     init_tournament,
@@ -65,6 +71,19 @@ def _tour_observe_dict(t) -> dict:
     }
 
 
+def _fc_observe_dict(ep) -> dict:
+    obs = ep.observed()
+    return {
+        "steps": obs["steps"],
+        "values": obs["values"],
+        "next_step": None if ep.is_done() else ep.next_step(),
+        "done": ep.is_done(),
+        "score": ep.score(),
+        "rules": "逐 checkpoint 揭示训练曲线的 acc。每步预测下一 checkpoint 的 acc;"
+                 "评分 = 相对线性外推基线的技巧分(懂饱和/平台动力学者胜)。",
+    }
+
+
 def _spec(args) -> DatasetSpec:
     return spec_from_args(args.family, args.n_samples, args.modulus, args.n_bits, args.label_noise)
 
@@ -97,6 +116,12 @@ def main(argv: list[str]) -> int:
     tan = sub.add_parser("tour-answer")
     tan.add_argument("--run-dir", required=True)
     tan.add_argument("--candidate", required=True)
+    for name in ("fc-init", "fc-observe"):
+        sp = sub.add_parser(name)
+        sp.add_argument("--run-dir", required=True)
+    fp = sub.add_parser("fc-predict")
+    fp.add_argument("--run-dir", required=True)
+    fp.add_argument("--value", type=float, required=True)
     args = parser.parse_args(argv)
 
     if args.cmd == "init":
@@ -137,6 +162,20 @@ def main(argv: list[str]) -> int:
         t = load_tournament(args.run_dir)
         res = t.answer(args.candidate)
         save_tournament(args.run_dir, t)
+        print(json.dumps(res.__dict__, ensure_ascii=False))
+        return 0
+    if args.cmd == "fc-init":
+        ep = init_forecast(args.run_dir, default_forecast_config())
+        print(json.dumps(_fc_observe_dict(ep), ensure_ascii=False))
+        return 0
+    if args.cmd == "fc-observe":
+        ep = load_forecast(args.run_dir)
+        print(json.dumps(_fc_observe_dict(ep), ensure_ascii=False))
+        return 0
+    if args.cmd == "fc-predict":
+        ep = load_forecast(args.run_dir)
+        res = ep.predict(args.value)
+        save_forecast(args.run_dir, ep)
         print(json.dumps(res.__dict__, ensure_ascii=False))
         return 0
     return 1
