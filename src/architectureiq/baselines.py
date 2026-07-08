@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from architectureiq.curvebank import CurveBank
 from architectureiq.datasets import DatasetSpec
+from architectureiq.doctor import DoctorConfig, DoctorEpisode
 from architectureiq.episode import CommitResult, EpisodeConfig, Environment
 from architectureiq.tournament import TournamentConfig
 
@@ -68,3 +69,24 @@ def run_successive_halving(config: TournamentConfig, eta: int = 2) -> SHResult:
     best_final = max(bank.final_acc(c) for c in config.candidates)
     regret = best_final - bank.final_acc(chosen)
     return SHResult(chosen.id, steps_spent, regret)
+
+
+@dataclass
+class GridDoctorResult:
+    chosen_lr: float
+    steps_spent: int
+    correct: bool
+
+
+def run_grid_search_doctor(config: DoctorConfig) -> GridDoctorResult:
+    """语义盲庸医:试遍 grid 全部 lr,挑 final_acc 最高者开药。"""
+    ep = DoctorEpisode(config)
+    best_lr, best_acc = config.grid[0], -1.0
+    for lr in config.grid:
+        r = ep.treat(lr)
+        if r.over_budget:
+            break
+        if r.final_acc > best_acc:
+            best_acc, best_lr = r.final_acc, lr
+    res = ep.commit(best_lr)
+    return GridDoctorResult(best_lr, ep.budget_spent, res.correct)
