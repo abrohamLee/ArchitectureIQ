@@ -43,10 +43,13 @@ class RoundResult:
 
 
 def default_forecast_config() -> ForecastConfig:
+    # tiny_transformer/lr=3e-3 在 modular_addition 上是延迟 grokking 曲线:
+    # 长平台(acc≈0.16)后突然起跳到 1.0 再饱和 —— 动力学丰富,线性外推会被
+    # 平台骗、在饱和处过冲。mlp 因 grok 太快(2 步到 1.0)退化,故不用作默认。
     return ForecastConfig(
-        arch="mlp",
+        arch="tiny_transformer",
         spec=DatasetSpec(family="modular_addition", n_samples=300, modulus=7),
-        lr=1e-2, max_steps=200, eval_every=20, seed=0,
+        lr=3e-3, max_steps=300, eval_every=20, seed=0,
     )
 
 
