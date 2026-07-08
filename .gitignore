@@ -4,3 +4,7 @@ PostTrainBench/
 __pycache__/
 *.pyc
 .pytest_cache/
+MLS-Bench/
+marin/
+pythia/
+ARC-AGI-3-Agents/
