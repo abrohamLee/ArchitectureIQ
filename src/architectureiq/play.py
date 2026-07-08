@@ -10,6 +10,12 @@ from architectureiq.doctor import doctor_config
 from architectureiq.doctorstate import init_doctor, load_doctor, save_doctor
 from architectureiq.leverid import default_leverid_config
 from architectureiq.leveridstate import init_leverid, load_leverid, save_leverid
+from architectureiq.windtunnel import default_windtunnel_config
+from architectureiq.windtunnelstate import (
+    init_windtunnel,
+    load_windtunnel,
+    save_windtunnel,
+)
 from architectureiq.realdoctorstate import (
     init_real_doctor,
     load_real_doctor,
@@ -168,6 +174,24 @@ def _bbl_observe_dict(ep) -> dict:
     }
 
 
+WT_RULES = (
+    "N 个候选 config 竞争,你要选出**大尺度**上最优的那个。但你只能花预算在各**尺度**跑"
+    "便宜代理实验(wt-run --candidate C --scale s,小尺度便宜、大尺度贵),看该候选在该尺度的值。"
+    "关键:差异随尺度**涌现**——小尺度大家挤在一起、纯噪声骗人,大尺度才拉开真差距。信小"
+    "尺度会翻车;花预算爬到大尺度验证才可靠。分数 = 大尺度选对 × 效率。"
+)
+
+
+def _wt_observe_dict(wt) -> dict:
+    return {
+        "candidates": wt.ids,
+        "scales": [{"scale": k, "cost": c} for k, c in enumerate(wt.config.scale_costs)],
+        "budget": wt.config.budget,
+        "budget_spent": wt.budget_spent,
+        "rules": WT_RULES,
+    }
+
+
 def _spec(args) -> DatasetSpec:
     return spec_from_args(args.family, args.n_samples, args.modulus, args.n_bits, args.label_noise)
 
@@ -257,6 +281,18 @@ def main(argv: list[str]) -> int:
     lgs = sub.add_parser("bbl-guess")
     lgs.add_argument("--run-dir", required=True)
     lgs.add_argument("--value", required=True)
+    wi = sub.add_parser("wt-init")
+    wi.add_argument("--run-dir", required=True)
+    wi.add_argument("--seed", type=int, default=0)
+    wo = sub.add_parser("wt-observe")
+    wo.add_argument("--run-dir", required=True)
+    wr = sub.add_parser("wt-run")
+    wr.add_argument("--run-dir", required=True)
+    wr.add_argument("--candidate", required=True)
+    wr.add_argument("--scale", type=int, required=True)
+    wc = sub.add_parser("wt-commit")
+    wc.add_argument("--run-dir", required=True)
+    wc.add_argument("--candidate", required=True)
     args = parser.parse_args(argv)
 
     if args.cmd == "init":
@@ -399,6 +435,26 @@ def main(argv: list[str]) -> int:
         ep = load_leverid(args.run_dir)
         res = ep.guess(args.value)
         save_leverid(args.run_dir, ep)
+        print(json.dumps(res.__dict__, ensure_ascii=False))
+        return 0
+    if args.cmd == "wt-init":
+        wt = init_windtunnel(args.run_dir, default_windtunnel_config(args.seed))
+        print(json.dumps(_wt_observe_dict(wt), ensure_ascii=False))
+        return 0
+    if args.cmd == "wt-observe":
+        wt = load_windtunnel(args.run_dir)
+        print(json.dumps(_wt_observe_dict(wt), ensure_ascii=False))
+        return 0
+    if args.cmd == "wt-run":
+        wt = load_windtunnel(args.run_dir)
+        res = wt.run(args.candidate, args.scale)
+        save_windtunnel(args.run_dir, wt)
+        print(json.dumps(res.__dict__, ensure_ascii=False))
+        return 0
+    if args.cmd == "wt-commit":
+        wt = load_windtunnel(args.run_dir)
+        res = wt.commit(args.candidate)
+        save_windtunnel(args.run_dir, wt)
         print(json.dumps(res.__dict__, ensure_ascii=False))
         return 0
     return 1
