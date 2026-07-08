@@ -54,15 +54,21 @@ def default_tournament_config() -> TournamentConfig:
 
 
 class Tournament:
-    def __init__(self, config: TournamentConfig, bank: CurveBank | None = None):
+    def __init__(self, config: TournamentConfig, bank: CurveBank | None = None,
+                 trained: dict[str, int] | None = None, budget_spent: int = 0):
         self.config = config
         self.bank = bank or CurveBank(
             config.spec, max_steps=config.max_steps,
             eval_every=config.eval_every, seed=config.seed,
         )
         self._by_id = {c.id: c for c in config.candidates}
-        self._trained: dict[str, int] = {c.id: 0 for c in config.candidates}
-        self.budget_spent = 0
+        self._trained: dict[str, int] = (
+            dict(trained) if trained is not None else {c.id: 0 for c in config.candidates}
+        )
+        self.budget_spent = budget_spent
+
+    def snapshot(self) -> dict:
+        return {"trained": dict(self._trained), "budget_spent": self.budget_spent}
 
     def advance(self, candidate_id: str, extra_steps: int) -> AdvanceResult:
         cand = self._by_id[candidate_id]
