@@ -1,0 +1,5 @@
+{
+  "task_id": "blackbox_lever",
+  "lever_family": "optimizer",
+  "hidden_value": "sgd"
+}

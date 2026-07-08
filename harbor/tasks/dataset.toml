@@ -1,0 +1,20 @@
+# ArchitectureIQ Harbor 数据集清单
+# 重新生成: python harbor/generate_tasks.py
+
+[dataset]
+name = "architectureiq/architectureiq"
+description = "ArchitectureIQ —— 测 LLM 架构直觉的交互式 CPU-only benchmark。"
+authors = [{ name = "ArchitectureIQ", email = "lpeihang18@gmail.com" }]
+keywords = ["architecture-intuition", "cpu-only", "interactive"]
+
+[[tasks]]
+name = "architectureiq/fingerprint-lever"
+
+[[tasks]]
+name = "architectureiq/blackbox-lever"
+
+[[tasks]]
+name = "architectureiq/diagnostic"
+
+[[tasks]]
+name = "architectureiq/windtunnel"

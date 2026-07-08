@@ -1,0 +1,16 @@
+{
+  "task_id": "fingerprint_lever",
+  "lever_family": "optimizer",
+  "correct_margin": 0.22,
+  "ref_seeds": [
+    10,
+    11,
+    12
+  ],
+  "query_seeds": [
+    13,
+    14,
+    15
+  ],
+  "probe_steps": 80
+}

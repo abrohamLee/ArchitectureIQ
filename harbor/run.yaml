@@ -1,0 +1,27 @@
+# ArchitectureIQ 的 Harbor 参考配置(纯 CPU docker 环境)。
+#
+# 用法:
+#   harbor run -c harbor/run.yaml -a claude-code -m anthropic/claude-opus-4-8
+#   harbor run -c harbor/run.yaml -p harbor/tasks/architectureiq__fingerprint-lever
+#
+# 前置:先构建基础镜像(见 harbor/README.md):
+#   docker build -t architectureiq-harbor:base -f harbor/Dockerfile.base .
+
+jobs_dir: jobs
+n_attempts: 1
+timeout_multiplier: 1.0
+n_concurrent_trials: 4
+quiet: false
+
+environment:
+  # 纯 CPU —— 不需要 GPU 子类,直接用 Harbor 内置 docker 环境。
+  type: docker
+  force_build: true
+  delete: true
+
+agents:
+  - name: claude-code
+    model_name: anthropic/claude-opus-4-8
+
+datasets:
+  - path: harbor/tasks

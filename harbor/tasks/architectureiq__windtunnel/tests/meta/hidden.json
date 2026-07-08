@@ -1,0 +1,5 @@
+{
+  "task_id": "windtunnel",
+  "seed": 3,
+  "regret_threshold": 0.05
+}

@@ -1,0 +1,17 @@
+# ArchitectureIQ Harbor 基础镜像(纯 CPU,无需 GPU / nvidia toolkit)。
+#
+# 构建(build context = 仓库根):
+#   docker build -t architectureiq-harbor:base -f harbor/Dockerfile.base .
+#
+# 每个任务的 environment/Dockerfile 都 FROM 这个镜像 + 预开局。
+FROM python:3.11-slim
+
+# CPU 版 torch(体积小很多,任务全在玩具尺度,CPU 足够)
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch \
+    && pip install --no-cache-dir "numpy>=1.26"
+
+COPY . /opt/architectureiq
+RUN pip install --no-cache-dir /opt/architectureiq
+
+# 预热真实曲线数据(打包进包/数据目录)
+ENV PYTHONUNBUFFERED=1
