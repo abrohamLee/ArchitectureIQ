@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from architectureiq.curvebank import Candidate, CurveBank
 from architectureiq.datasets import DatasetSpec
+from architectureiq.trainer import LearningCurve
 
 
 def linear_extrapolate(steps: list[int], values: list[float], target: int) -> float:
@@ -54,16 +55,22 @@ def default_forecast_config() -> ForecastConfig:
 
 
 class ForecastEpisode:
-    def __init__(self, config: ForecastConfig, cursor: int = 1,
-                 skill_sum: float = 0.0, rounds: int = 0):
+    def __init__(self, config: ForecastConfig | None = None, cursor: int = 1,
+                 skill_sum: float = 0.0, rounds: int = 0,
+                 curve: LearningCurve | None = None):
+        # curve 注入:real tier 直接喂真实曲线(Pythia/Marin),跳过玩具训练;
+        # 否则按 config 玩具真跑一条。二者经同一滚动预测/评分逻辑。
         self.config = config
         self.cursor = cursor
         self.skill_sum = skill_sum
         self.rounds = rounds
-        bank = CurveBank(config.spec, max_steps=config.max_steps,
-                         eval_every=config.eval_every, seed=config.seed)
-        cand = Candidate(id=f"{config.arch}_{config.lr:g}", arch=config.arch, lr=config.lr)
-        self._curve = bank.curve(cand)  # 隐藏曲线(真跑一次)
+        if curve is not None:
+            self._curve = curve
+        else:
+            bank = CurveBank(config.spec, max_steps=config.max_steps,
+                             eval_every=config.eval_every, seed=config.seed)
+            cand = Candidate(id=f"{config.arch}_{config.lr:g}", arch=config.arch, lr=config.lr)
+            self._curve = bank.curve(cand)  # 隐藏曲线(真跑一次)
 
     def _last_index(self) -> int:
         return len(self._curve.steps) - 1
