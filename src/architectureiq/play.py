@@ -8,6 +8,8 @@ from architectureiq.blackbox import default_blackbox_config
 from architectureiq.blackboxstate import init_blackbox, load_blackbox, save_blackbox
 from architectureiq.doctor import doctor_config
 from architectureiq.doctorstate import init_doctor, load_doctor, save_doctor
+from architectureiq.leverid import default_leverid_config
+from architectureiq.leveridstate import init_leverid, load_leverid, save_leverid
 from architectureiq.realdoctorstate import (
     init_real_doctor,
     load_real_doctor,
@@ -147,6 +149,25 @@ def _bb_observe_dict(ep) -> dict:
     }
 
 
+BBL_RULES = (
+    "环境藏了一个真实杠杆的答案(优化器 ∈ 池)。设计探测数据集(bbl-probe),环境返回"
+    "池中各答案在你数据上的参考「结构优势」签名 + 黑盒的 mystery 签名;比对 mystery 最"
+    "像哪个,用 bbl-guess 猜。默认/random 探测会让签名塌成一团,必须设计好探测让优化器"
+    "的动力学差异显形。分数 = 猜对 × 效率。"
+)
+
+
+def _bbl_observe_dict(ep) -> dict:
+    return {
+        "family": ep.config.family,
+        "pool": ep.pool,
+        "budget_steps": ep.config.budget_steps,
+        "budget_spent": ep.budget_spent,
+        "probe_cost": ep.probe_cost(),
+        "rules": BBL_RULES,
+    }
+
+
 def _spec(args) -> DatasetSpec:
     return spec_from_args(args.family, args.n_samples, args.modulus, args.n_bits, args.label_noise)
 
@@ -224,6 +245,18 @@ def main(argv: list[str]) -> int:
     bg = sub.add_parser("bb-guess")
     bg.add_argument("--run-dir", required=True)
     bg.add_argument("--arch", required=True)
+    li = sub.add_parser("bbl-init")
+    li.add_argument("--run-dir", required=True)
+    li.add_argument("--family", default="optimizer")
+    li.add_argument("--hidden", default="sgd")
+    lo = sub.add_parser("bbl-observe")
+    lo.add_argument("--run-dir", required=True)
+    lp = sub.add_parser("bbl-probe")
+    lp.add_argument("--run-dir", required=True)
+    _add_spec_args(lp)
+    lgs = sub.add_parser("bbl-guess")
+    lgs.add_argument("--run-dir", required=True)
+    lgs.add_argument("--value", required=True)
     args = parser.parse_args(argv)
 
     if args.cmd == "init":
@@ -346,6 +379,26 @@ def main(argv: list[str]) -> int:
         ep = load_blackbox(args.run_dir)
         res = ep.guess(args.arch)
         save_blackbox(args.run_dir, ep)
+        print(json.dumps(res.__dict__, ensure_ascii=False))
+        return 0
+    if args.cmd == "bbl-init":
+        ep = init_leverid(args.run_dir, default_leverid_config(args.family, args.hidden))
+        print(json.dumps(_bbl_observe_dict(ep), ensure_ascii=False))
+        return 0
+    if args.cmd == "bbl-observe":
+        ep = load_leverid(args.run_dir)
+        print(json.dumps(_bbl_observe_dict(ep), ensure_ascii=False))
+        return 0
+    if args.cmd == "bbl-probe":
+        ep = load_leverid(args.run_dir)
+        res = ep.probe(_spec(args))
+        save_leverid(args.run_dir, ep)
+        print(json.dumps(res.__dict__, ensure_ascii=False))
+        return 0
+    if args.cmd == "bbl-guess":
+        ep = load_leverid(args.run_dir)
+        res = ep.guess(args.value)
+        save_leverid(args.run_dir, ep)
         print(json.dumps(res.__dict__, ensure_ascii=False))
         return 0
     return 1
