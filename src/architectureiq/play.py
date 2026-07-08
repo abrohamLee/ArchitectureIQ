@@ -4,6 +4,8 @@ import json
 from architectureiq.datasets import DatasetSpec
 from architectureiq.episode import default_config
 from architectureiq.runstate import init_state, load_state, save_state
+from architectureiq.blackbox import default_blackbox_config
+from architectureiq.blackboxstate import init_blackbox, load_blackbox, save_blackbox
 from architectureiq.doctor import doctor_config
 from architectureiq.doctorstate import init_doctor, load_doctor, save_doctor
 from architectureiq.forecast import default_forecast_config
@@ -105,6 +107,23 @@ def _dr_observe_dict(ep) -> dict:
     }
 
 
+BB_RULES = (
+    "环境藏了池中一个架构。设计探测数据集(bb-probe),环境返回池中各架构的参考「结构优势」"
+    "签名 + 黑盒的 mystery 签名;比对 mystery 最像哪个参考,用 bb-guess 猜。好探测(结构数据)"
+    "让签名清晰可分,random 探测会让签名塌成一团难分。分数 = 猜对 × 效率(探测越少越高)。"
+)
+
+
+def _bb_observe_dict(ep) -> dict:
+    return {
+        "pool": ep.config.pool,
+        "budget_steps": ep.config.budget_steps,
+        "budget_spent": ep.budget_spent,
+        "probe_cost": ep.probe_cost(),
+        "rules": BB_RULES,
+    }
+
+
 def _spec(args) -> DatasetSpec:
     return spec_from_args(args.family, args.n_samples, args.modulus, args.n_bits, args.label_noise)
 
@@ -154,6 +173,17 @@ def main(argv: list[str]) -> int:
     dc = sub.add_parser("dr-commit")
     dc.add_argument("--run-dir", required=True)
     dc.add_argument("--lr", type=float, required=True)
+    bi = sub.add_parser("bb-init")
+    bi.add_argument("--run-dir", required=True)
+    bi.add_argument("--hidden", default="mlp")
+    bo = sub.add_parser("bb-observe")
+    bo.add_argument("--run-dir", required=True)
+    bp = sub.add_parser("bb-probe")
+    bp.add_argument("--run-dir", required=True)
+    _add_spec_args(bp)
+    bg = sub.add_parser("bb-guess")
+    bg.add_argument("--run-dir", required=True)
+    bg.add_argument("--arch", required=True)
     args = parser.parse_args(argv)
 
     if args.cmd == "init":
@@ -228,6 +258,26 @@ def main(argv: list[str]) -> int:
         ep = load_doctor(args.run_dir)
         res = ep.commit(args.lr)
         save_doctor(args.run_dir, ep)
+        print(json.dumps(res.__dict__, ensure_ascii=False))
+        return 0
+    if args.cmd == "bb-init":
+        ep = init_blackbox(args.run_dir, default_blackbox_config(args.hidden))
+        print(json.dumps(_bb_observe_dict(ep), ensure_ascii=False))
+        return 0
+    if args.cmd == "bb-observe":
+        ep = load_blackbox(args.run_dir)
+        print(json.dumps(_bb_observe_dict(ep), ensure_ascii=False))
+        return 0
+    if args.cmd == "bb-probe":
+        ep = load_blackbox(args.run_dir)
+        res = ep.probe(_spec(args))
+        save_blackbox(args.run_dir, ep)
+        print(json.dumps(res.__dict__, ensure_ascii=False))
+        return 0
+    if args.cmd == "bb-guess":
+        ep = load_blackbox(args.run_dir)
+        res = ep.guess(args.arch)
+        save_blackbox(args.run_dir, ep)
         print(json.dumps(res.__dict__, ensure_ascii=False))
         return 0
     return 1
