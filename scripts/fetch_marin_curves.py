@@ -64,13 +64,36 @@ def harvest(projects: list[str], max_runs: int, samples: int, out: str) -> None:
     print(f"共 {total} 条 -> {out}")
 
 
+def fetch_one(run_path: str, metric: str, samples: int, out_dir: str) -> None:
+    """拉单条 run(如 raccoon 病例),append 到 marin_pathologies.jsonl。"""
+    api = _api()
+    run = api.run(run_path)
+    steps, values = _pull(run, metric, samples)
+    proj = run_path.split("/")[1]
+    rec = {
+        "id": f"marin|{proj}|{run.id}|{metric.replace('/', '-')}",
+        "model": run.id, "shot": "marin", "task": proj, "metric": metric,
+        "steps": steps, "values": values, "source": f"Marin WandB {run_path}",
+    }
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, "marin_pathologies.jsonl")
+    with open(path, "a") as f:
+        f.write(json.dumps(rec) + "\n")
+    print(f"wrote {len(steps)} pts ({rec['id']}) -> {path}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--projects", nargs="*", default=DEFAULT_PROJECTS)
     ap.add_argument("--max-runs", type=int, default=30)
     ap.add_argument("--samples", type=int, default=250)
+    ap.add_argument("--run", default=None, help="拉单条 run: entity/project/run_id")
+    ap.add_argument("--metric", default=METRIC)
     ap.add_argument("--out", default="data/real_curves/marin_curves.jsonl")
     args = ap.parse_args()
+    if args.run:
+        fetch_one(args.run, args.metric, args.samples, os.path.dirname(args.out))
+        return
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     harvest(args.projects, args.max_runs, args.samples, args.out)
 

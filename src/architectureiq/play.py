@@ -8,6 +8,11 @@ from architectureiq.blackbox import default_blackbox_config
 from architectureiq.blackboxstate import init_blackbox, load_blackbox, save_blackbox
 from architectureiq.doctor import doctor_config
 from architectureiq.doctorstate import init_doctor, load_doctor, save_doctor
+from architectureiq.realdoctorstate import (
+    init_real_doctor,
+    load_real_doctor,
+    save_real_doctor,
+)
 from architectureiq.forecast import default_forecast_config
 from architectureiq.forecaststate import (
     init_forecast,
@@ -97,6 +102,22 @@ DR_RULES = (
 )
 
 
+DR_REAL_RULES = (
+    "给你一条真实训练 loss 曲线,逐段揭示。判断这个 run 是否会**发散**(病态:loss 从最低点"
+    "冲高)。dr-real-reveal 多揭一段(花预算),或凭前缀直接 dr-real-diagnose --label "
+    "healthy|pathological。越早判对分越高(平方效率惩罚)。"
+)
+
+
+def _dr_real_observe_dict(ep) -> dict:
+    o = ep.observe()  # 只给已揭前缀,不泄露曲线 id / 真值
+    return {
+        "steps": o["steps"], "loss": o["loss"],
+        "frac_revealed": o["frac_revealed"], "budget_spent": o["budget_spent"],
+        "labels": ["healthy", "pathological"], "rules": DR_REAL_RULES,
+    }
+
+
 def _dr_observe_dict(ep) -> dict:
     return {
         "sick_curve": ep.sick_curve(),
@@ -182,6 +203,16 @@ def main(argv: list[str]) -> int:
     dc = sub.add_parser("dr-commit")
     dc.add_argument("--run-dir", required=True)
     dc.add_argument("--lr", type=float, required=True)
+    dri = sub.add_parser("dr-real-init")
+    dri.add_argument("--run-dir", required=True)
+    dri.add_argument("--curve", required=True)
+    dro = sub.add_parser("dr-real-observe")
+    dro.add_argument("--run-dir", required=True)
+    drr = sub.add_parser("dr-real-reveal")
+    drr.add_argument("--run-dir", required=True)
+    drd = sub.add_parser("dr-real-diagnose")
+    drd.add_argument("--run-dir", required=True)
+    drd.add_argument("--label", required=True)
     bi = sub.add_parser("bb-init")
     bi.add_argument("--run-dir", required=True)
     bi.add_argument("--hidden", default="mlp")
@@ -275,6 +306,26 @@ def main(argv: list[str]) -> int:
         ep = load_doctor(args.run_dir)
         res = ep.commit(args.lr)
         save_doctor(args.run_dir, ep)
+        print(json.dumps(res.__dict__, ensure_ascii=False))
+        return 0
+    if args.cmd == "dr-real-init":
+        ep = init_real_doctor(args.run_dir, args.curve)
+        print(json.dumps(_dr_real_observe_dict(ep), ensure_ascii=False))
+        return 0
+    if args.cmd == "dr-real-observe":
+        ep = load_real_doctor(args.run_dir)
+        print(json.dumps(_dr_real_observe_dict(ep), ensure_ascii=False))
+        return 0
+    if args.cmd == "dr-real-reveal":
+        ep = load_real_doctor(args.run_dir)
+        ep.reveal()
+        save_real_doctor(args.run_dir, ep)
+        print(json.dumps(_dr_real_observe_dict(ep), ensure_ascii=False))
+        return 0
+    if args.cmd == "dr-real-diagnose":
+        ep = load_real_doctor(args.run_dir)
+        res = ep.diagnose(args.label)
+        save_real_doctor(args.run_dir, ep)
         print(json.dumps(res.__dict__, ensure_ascii=False))
         return 0
     if args.cmd == "bb-init":
