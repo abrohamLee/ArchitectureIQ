@@ -15,8 +15,13 @@ COLOR = {"Opus": "#E8663D", "Sonnet": "#F0A05A",
 
 def main():
     rows = [json.loads(l) for l in open(RESULTS) if l.strip()]
+    # 剔除'查表作弊'(pred 与 truth 6 位以上吻合 = 读了数据文件)
+    clean = [r for r in rows if not (r["value"] is not None and r["truth"] is not None
+                                     and abs(r["value"] - r["truth"]) < 1e-6)]
+    dropped = len(rows) - len(clean)
+    print(f"剔除疑似查表 {dropped} 行,剩 {len(clean)}")
     agg = defaultdict(lambda: {"beat": [], "cost": [], "skill": []})
-    for r in rows:
+    for r in clean:
         a = agg[r["config"]]
         a["beat"].append(r["beat"]); a["cost"].append(r["est_cost_usd"]); a["skill"].append(r["skill_clip"])
 
@@ -35,8 +40,8 @@ def main():
         col = COLOR.get(c, "#888")
         ax.scatter([cost], [beat], s=190, color=col, zorder=4, edgecolors="white", linewidths=0.7)
         dx, dy, ha, va = LAB.get(c, (8,0,"left","center"))
-        ms = sum(agg[c]["skill"])/len(agg[c]["skill"])
-        ax.annotate(f"{c}  (skill {ms:+.2f})", (cost, beat), color=col, fontsize=11, fontweight="bold",
+        ms = sum(agg[c]["skill"])/len(agg[c]["skill"]); nn = len(agg[c]["beat"])
+        ax.annotate(f"{c}  (skill {ms:+.2f}, n={nn})", (cost, beat), color=col, fontsize=10.5, fontweight="bold",
                     textcoords="offset points", xytext=(dx, dy), ha=ha, va=va)
 
     ax.axhline(0, color="#444", lw=1)
