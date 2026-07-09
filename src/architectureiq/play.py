@@ -6,6 +6,12 @@ from architectureiq.episode import default_config
 from architectureiq.runstate import init_state, load_state, save_state
 from architectureiq.blackbox import default_blackbox_config
 from architectureiq.blackboxstate import init_blackbox, load_blackbox, save_blackbox
+from architectureiq.bpforecast import load_hard_real
+from architectureiq.bpforecaststate import (
+    init_bpforecast,
+    load_bpforecast,
+    save_bpforecast,
+)
 from architectureiq.diagnostic import PATHOLOGIES, QUERY_COSTS, default_diagnostic_config
 from architectureiq.diagnosticstate import (
     init_diagnostic,
@@ -204,6 +210,29 @@ def _bbl_observe_dict(ep) -> dict:
     }
 
 
+BPFC_RULES = (
+    "看架构+配置+一小段免费前缀,预测**远期(horizon_step)**的指标值。可 bpfc-reveal "
+    "揭示更多曲线(封顶在 reveal_cap_step,拐点在其外、你揭示不到)。押 bpfc-predict。"
+    "评分 skill = 1 − 你的误差 / 最优朴素基线(线性/幂律/persistence)误差;押赢基线才有正分,"
+    "可为负。诀窍:读配置判断这个架构会不会 grok/涌现/发散,别只跟着曲线外推。"
+)
+
+_BPFC_BANK = None
+
+
+def _bpfc_bank():
+    global _BPFC_BANK
+    if _BPFC_BANK is None:
+        _BPFC_BANK = load_hard_real("data/real_curves")  # 只发基线会挂的判别性实例
+    return _BPFC_BANK
+
+
+def _bpfc_observe_dict(ep) -> dict:
+    o = ep.observe()
+    o["rules"] = BPFC_RULES
+    return o
+
+
 DX_RULES = (
     "给你一条**病态**训练曲线(sick_curve)—— 但多个病因(lr_too_low / dead_relu / "
     "vanishing_grad)在 loss 曲线上长得几乎一样,光看曲线诊断不出。你要花预算 dx-query "
@@ -352,6 +381,17 @@ def main(argv: list[str]) -> int:
     wc = sub.add_parser("wt-commit")
     wc.add_argument("--run-dir", required=True)
     wc.add_argument("--candidate", required=True)
+    fi = sub.add_parser("bpfc-init")
+    fi.add_argument("--run-dir", required=True)
+    fi.add_argument("--index", type=int, default=0)
+    fo = sub.add_parser("bpfc-observe")
+    fo.add_argument("--run-dir", required=True)
+    fr = sub.add_parser("bpfc-reveal")
+    fr.add_argument("--run-dir", required=True)
+    fr.add_argument("--until", type=int, required=True)
+    fp = sub.add_parser("bpfc-predict")
+    fp.add_argument("--run-dir", required=True)
+    fp.add_argument("--value", type=float, required=True)
     xi = sub.add_parser("dx-init")
     xi.add_argument("--run-dir", required=True)
     xi.add_argument("--pathology", default="dead_relu")
@@ -545,6 +585,28 @@ def main(argv: list[str]) -> int:
         wt = load_windtunnel(args.run_dir)
         res = wt.commit(args.candidate)
         save_windtunnel(args.run_dir, wt)
+        print(json.dumps(res.__dict__, ensure_ascii=False))
+        return 0
+    if args.cmd == "bpfc-init":
+        bank = _bpfc_bank()
+        inst = bank[args.index % len(bank)]
+        ep = init_bpforecast(args.run_dir, inst)
+        print(json.dumps(_bpfc_observe_dict(ep), ensure_ascii=False))
+        return 0
+    if args.cmd == "bpfc-observe":
+        ep = load_bpforecast(args.run_dir)
+        print(json.dumps(_bpfc_observe_dict(ep), ensure_ascii=False))
+        return 0
+    if args.cmd == "bpfc-reveal":
+        ep = load_bpforecast(args.run_dir)
+        res = ep.reveal(args.until)
+        save_bpforecast(args.run_dir, ep)
+        print(json.dumps(res.__dict__, ensure_ascii=False))
+        return 0
+    if args.cmd == "bpfc-predict":
+        ep = load_bpforecast(args.run_dir)
+        res = ep.predict(args.value)
+        save_bpforecast(args.run_dir, ep)
         print(json.dumps(res.__dict__, ensure_ascii=False))
         return 0
     if args.cmd == "dx-init":
