@@ -8,3 +8,6 @@ MLS-Bench/
 marin/
 pythia/
 ARC-AGI-3-Agents/
+docs/
+*.png
+*.html
